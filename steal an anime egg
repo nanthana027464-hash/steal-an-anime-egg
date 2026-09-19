@@ -1,0 +1,290 @@
+-- โหลด Rayfield UI Library
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+-- สร้างหน้าต่างหลัก (UI Window)
+local Window = Rayfield:CreateWindow({
+   Name = "Multi-Function Hack UI",
+   LoadingTitle = "กำลังโหลดระบบ...",
+   LoadingSubtitle = "by Assistant",
+   ConfigurationSaving = {
+      Enabled = false
+   },
+   Discord = {
+      Enabled = false
+   },
+   KeySystem = false
+})
+
+-- สร้าง แถบเมนู (Tabs)
+local PlayerTab = Window:CreateTab("ตัวละคร (Player)", 4483362458)
+local VehicleTab = Window:CreateTab("ยานพาหนะ (Vehicle)", 4483362458)
+local WorldTab = Window:CreateTab("ทั่วไป (World/Items)", 4483362458)
+local EggTab = Window:CreateTab("ระบบไข่ (Egg Tracker)", 4483362458)
+
+--------------------------------------------------------------------
+-- 1. ระบบตัวละคร (Player Settings)
+--------------------------------------------------------------------
+local LocalPlayer = game.Players.LocalPlayer
+
+local DefaultSpeed = 16
+local CustomSpeed = 16
+local SpeedEnabled = false
+
+local function UpdateSpeed()
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+        if SpeedEnabled then
+            LocalPlayer.Character.Humanoid.WalkSpeed = CustomSpeed
+        else
+            LocalPlayer.Character.Humanoid.WalkSpeed = DefaultSpeed
+        end
+    end
+end
+
+-- Toggle เปิด/ปิด ความเร็ววิ่ง
+PlayerTab:CreateToggle({
+   Name = "เปิด / ปิด ความเร็ววิ่ง",
+   CurrentValue = false,
+   Flag = "SpeedToggle",
+   Callback = function(Value)
+      SpeedEnabled = Value
+      UpdateSpeed()
+   end,
+})
+
+-- Slider ปรับความเร็ววิ่ง
+PlayerTab:CreateSlider({
+   Name = "ปรับระดับความเร็ว (WalkSpeed)",
+   Range = {16, 500},
+   Increment = 1,
+   Suffix = " Speed",
+   CurrentValue = 16,
+   Flag = "SpeedSlider",
+   Callback = function(Value)
+      CustomSpeed = Value
+      UpdateSpeed()
+   end,
+})
+
+--------------------------------------------------------------------
+-- 2. ระบบป้องกันการโจมตี (God Mode / Anti-Damage)
+--------------------------------------------------------------------
+local GodModeEnabled = false
+
+PlayerTab:CreateToggle({
+   Name = "เปิด / ปิด ป้องกันการโจมตี (God Mode)",
+   CurrentValue = false,
+   Flag = "GodModeToggle",
+   Callback = function(Value)
+      GodModeEnabled = Value
+      if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+         local hum = LocalPlayer.Character.Humanoid
+         if GodModeEnabled then
+            hum:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
+         else
+            hum:SetStateEnabled(Enum.HumanoidStateType.Dead, true)
+         end
+      end
+   end,
+})
+
+-- Loop รักษาสุขภาพตัวละคร
+task.spawn(function()
+    while task.wait(0.1) do
+        if GodModeEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            local hum = LocalPlayer.Character.Humanoid
+            if hum.Health < hum.MaxHealth then
+                hum.Health = hum.MaxHealth
+            end
+        end
+    end
+end)
+
+--------------------------------------------------------------------
+-- 3. ระบบปรับความเร็วรถ (Vehicle Speed)
+--------------------------------------------------------------------
+local VehicleSpeedEnabled = false
+local VehicleCustomSpeed = 100
+
+VehicleTab:CreateToggle({
+   Name = "เปิด / ปิด ระบบปรับความเร็วรถ",
+   CurrentValue = false,
+   Flag = "VehicleSpeedToggle",
+   Callback = function(Value)
+      VehicleSpeedEnabled = Value
+   end,
+})
+
+VehicleTab:CreateSlider({
+   Name = "ความเร็วรถ (Vehicle Speed)",
+   Range = {20, 500},
+   Increment = 5,
+   Suffix = " Speed",
+   CurrentValue = 100,
+   Flag = "VehicleSpeedSlider",
+   Callback = function(Value)
+      VehicleCustomSpeed = Value
+   end,
+})
+
+-- Loop ปรับความเร็วรถ
+task.spawn(function()
+    while task.wait(0.1) do
+        if VehicleSpeedEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            local hum = LocalPlayer.Character.Humanoid
+            if hum.SeatPart and hum.SeatPart:IsA("VehicleSeat") then
+                hum.SeatPart.MaxSpeed = VehicleCustomSpeed
+                hum.SeatPart.Torque = VehicleCustomSpeed * 10
+            end
+        end
+    end
+end)
+
+--------------------------------------------------------------------
+-- 4. ระบบหยิบของไว (Fast Proximity Prompt / Instagrab)
+--------------------------------------------------------------------
+local FastPromptEnabled = false
+local OriginalHoldDurations = {}
+
+WorldTab:CreateToggle({
+   Name = "เปิด / ปิด หยิบของไว (Instant Interact)",
+   CurrentValue = false,
+   Flag = "FastPromptToggle",
+   Callback = function(Value)
+      FastPromptEnabled = Value
+      for _, prompt in ipairs(workspace:GetDescendants()) do
+         if prompt:IsA("ProximityPrompt") then
+            if FastPromptEnabled then
+               if not OriginalHoldDurations[prompt] then
+                  OriginalHoldDurations[prompt] = prompt.HoldDuration
+               end
+               prompt.HoldDuration = 0
+            else
+               if OriginalHoldDurations[prompt] then
+                  prompt.HoldDuration = OriginalHoldDurations[prompt]
+               end
+            end
+         end
+      end
+   end,
+})
+
+workspace.DescendantAdded:Connect(function(descendant)
+    if descendant:IsA("ProximityPrompt") and FastPromptEnabled then
+        OriginalHoldDurations[descendant] = descendant.HoldDuration
+        descendant.HoldDuration = 0
+    end
+end)
+
+--------------------------------------------------------------------
+-- 5. ระบบบอกระดับความแรร์ของไข่ / แสดงป้ายชื่อไข่ (Egg Rarity & ESP)
+--------------------------------------------------------------------
+local EggESPEnabled = false
+local ActiveEggGuis = {}
+
+local function AddEggESP(object)
+    -- สแกนค้นหาวัตถุที่มีคำว่า Egg หรือเป็นโมเดลไข่
+    if object:IsA("Model") or object:IsA("BasePart") then
+        local nameLower = string.lower(object.Name)
+        if string.find(nameLower, "egg") or object:FindFirstChild("Rarity") or object:GetAttribute("Rarity") then
+            local targetPart = object:IsA("Model") and (object.PrimaryPart or object:FindFirstChildWhichIsA("BasePart")) or object
+            if targetPart and not targetPart:FindFirstChild("EggESP_UI") then
+                
+                -- ดึงค่าความแรร์ (จาก Attribute / Value / หรือชื่อ)
+                local rarityText = "Common"
+                if object:GetAttribute("Rarity") then
+                    rarityText = tostring(object:GetAttribute("Rarity"))
+                elseif object:FindFirstChild("Rarity") then
+                    rarityText = tostring(object.Rarity.Value)
+                else
+                    rarityText = object.Name
+                end
+
+                -- สร้าง BillboardGui เพื่อโชว์ข้อความบนไข่
+                local bgui = Instance.new("BillboardGui")
+                bgui.Name = "EggESP_UI"
+                bgui.Adornee = targetPart
+                bgui.Size = UDim2.new(0, 150, 0, 40)
+                bgui.StudsOffset = Vector3.new(0, 2.5, 0)
+                bgui.AlwaysOnTop = true
+
+                local textLabel = Instance.new("TextLabel")
+                textLabel.Parent = bgui
+                textLabel.Size = UDim2.new(1, 0, 1, 0)
+                textLabel.BackgroundTransparency = 1
+                textLabel.Text = "🥚 " .. object.Name .. "\n[" .. rarityText .. "]"
+                textLabel.TextColor3 = Color3.fromRGB(255, 215, 0) -- สีทอง
+                textLabel.TextStrokeTransparency = 0
+                textLabel.TextSize = 14
+                textLabel.Font = Enum.Font.SourceSansBold
+
+                bgui.Parent = targetPart
+                table.insert(ActiveEggGuis, bgui)
+            end
+        end
+    end
+end
+
+local function RemoveEggESP()
+    for _, gui in ipairs(ActiveEggGuis) do
+        if gui and gui.Parent then
+            gui:Destroy()
+        end
+    end
+    ActiveEggGuis = {}
+end
+
+EggTab:CreateToggle({
+   Name = "เปิด / ปิด แสดงชื่อและระดับความแรร์ไข่ (Egg Rarity ESP)",
+   CurrentValue = false,
+   Flag = "EggESPToggle",
+   Callback = function(Value)
+      EggESPEnabled = Value
+      if EggESPEnabled then
+         for _, obj in ipairs(workspace:GetDescendants()) do
+            AddEggESP(obj)
+         end
+      else
+         RemoveEggESP()
+      end
+   end,
+})
+
+workspace.DescendantAdded:Connect(function(descendant)
+    if EggESPEnabled then
+        task.wait(0.2)
+        AddEggESP(descendant)
+    end
+end)
+
+--------------------------------------------------------------------
+-- ระบบป้องกันการรีเซ็ตเมื่อเกิดใหม่ (Respawn Handler)
+--------------------------------------------------------------------
+LocalPlayer.CharacterAdded:Connect(function(char)
+    char:WaitForChild("Humanoid")
+    task.wait(0.5)
+    UpdateSpeed()
+end)
+
+task.spawn(function()
+    while task.wait(0.1) do
+        if SpeedEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            if LocalPlayer.Character.Humanoid.WalkSpeed ~= CustomSpeed then
+                LocalPlayer.Character.Humanoid.WalkSpeed = CustomSpeed
+            end
+        end
+    end
+end)
+
+-- แจ้งเตือนเมื่อโหลดสำเร็จ
+Rayfield:Notify({
+   Title = "ระบบพร้อมใช้งาน!",
+   Content = "โหลดเมนูและฟังก์ชันทั้งหมดเรียบร้อยแล้ว",
+   Duration = 3,
+   Image = 4483362458,
+   Actions = {
+      Ignore = {
+         Name = "ตกลง",
+         Callback = function() end
+      },
+   },
+})
